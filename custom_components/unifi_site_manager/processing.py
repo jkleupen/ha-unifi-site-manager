@@ -72,6 +72,7 @@ class SiteHost:
     outage_minutes: int = 0
     apps: list[AppUpdate] = field(default_factory=list)
     installed: list[dict[str, Any]] = field(default_factory=list)
+    ui_name: str | None = None
     devices_total: int = 0
     devices_offline: int = 0
     updates_available: int = 0
@@ -294,6 +295,7 @@ def process(
         hosts[host_id] = SiteHost(
             id=host_id,
             name=name,
+            ui_name=str(reported.get("name") or "").strip() or None,
             ip=raw.get("ipAddress"),
             connected=connected,
             ignored=is_ignored(name, options.ignore_prefixes),
@@ -624,7 +626,7 @@ def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
         "pending_updates": pending_items,
         "app_versions": sorted(
             (
-                {"site": h.name, "os": h.version, "apps": h.installed}
+                {"site": h.name, "ui_name": h.ui_name, "os": h.version, "apps": h.installed}
                 for h in mon_hosts
             ),
             key=lambda item: item["site"].lower(),
