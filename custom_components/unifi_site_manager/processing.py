@@ -287,7 +287,7 @@ def process(
         if not host_id:
             continue
         reported = raw.get("reportedState") or {}
-        name = str(reported.get("hostname") or reported.get("name") or host_id)
+        name = str(reported.get("name") or reported.get("hostname") or host_id).strip()
         status = str(reported.get("state") or "").lower()
         connected = status not in ("disconnected", "offline")
         misses, since = _track(prev.hosts, host_id, not connected, now)
