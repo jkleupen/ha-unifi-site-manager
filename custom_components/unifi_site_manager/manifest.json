@@ -1,0 +1,12 @@
+{
+  "domain": "unifi_site_manager",
+  "name": "UniFi Site Manager Monitoring",
+  "codeowners": ["@jkleupen"],
+  "config_flow": true,
+  "documentation": "https://github.com/jkleupen/ha-unifi-site-manager",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/jkleupen/ha-unifi-site-manager/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

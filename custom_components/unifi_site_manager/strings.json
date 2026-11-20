@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "UniFi Site Manager",
+        "description": "Enter an API key created at unifi.ui.com (API section). It is stored only in Home Assistant.",
+        "data": {
+          "api_key": "API key"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate UniFi Site Manager",
+        "description": "The API key was rejected. Enter a new key from unifi.ui.com.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the UniFi Site Manager API.",
+      "invalid_auth": "The API key was rejected.",
+      "unknown": "Unexpected error. See the Home Assistant log."
+    },
+    "abort": {
+      "already_configured": "UniFi Site Manager is already configured.",
+      "reauth_successful": "The API key was updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UniFi Site Manager options",
+        "data": {
+          "scan_interval": "Polling interval (minutes)",
+          "ignore_prefixes": "Ignore names starting with (comma separated)",
+          "confirm_polls": "Consecutive offline polls before a device counts as offline",
+          "outage_devices": "Devices down at one site to raise a site outage",
+          "outage_minutes": "Minutes those devices must have been down",
+          "device_entities": "Create connectivity and firmware entities for every device"
+        },
+        "data_description": {
+          "ignore_prefixes": "Case-insensitive. Matching consoles and devices are left out of every count and get no entities.",
+          "device_entities": "Turn off to keep only consoles and the account-wide totals."
+        }
+      }
+    }
+  }
+}
