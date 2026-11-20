@@ -110,6 +110,13 @@ ACCOUNT_SENSORS: tuple[AccountSensorDescription, ...] = (
         attr_fn=lambda s: {"devices": s["overdue_updates"]},
     ),
     AccountSensorDescription(
+        key="apps_installed",
+        name="Applications installed",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda s: s["apps_installed"],
+        attr_fn=lambda s: {"consoles": s["app_versions"]},
+    ),
+    AccountSensorDescription(
         key="oldest_update_days",
         name="Oldest pending firmware update",
         device_class=SensorDeviceClass.DURATION,
@@ -191,6 +198,7 @@ class AccountSensor(AccountEntity, SensorEntity):
     _unrecorded_attributes = frozenset(
         {
             "devices",
+            "consoles",
             "offline_devices",
             "disconnected_consoles",
             "sites_down",

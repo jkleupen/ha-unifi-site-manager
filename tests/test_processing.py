@@ -248,6 +248,13 @@ def test_app_updates():
     events = [e for e in diff_events(d1, d2) if e[0] == "updates_overdue"]
     assert len(events) == 1 and events[0][1]["devices"][0]["name"] == "Network (application)"
 
+    av = d1.summary["app_versions"]
+    assert [i["site"] for i in av] == ["Client A"], av  # ignored console excluded
+    names = {a["name"]: a for a in av[0]["apps"]}
+    assert set(names) == {"network", "access"}, names
+    assert names["network"]["update"] == "11.0.103" and names["access"]["update"] is None
+    assert d1.summary["apps_installed"] == 2
+
     # Updated: the pending entry clears.
     hosts[0]["reportedState"]["controllers"][0]["updateAvailable"] = None
     d3, st = run(hosts, [], T0 + 32 * day, st)

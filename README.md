@@ -19,9 +19,12 @@ It discovers consoles and devices automatically and creates entities for each. T
 **Account-wide**, on the "UniFi Site Manager" device
 - `Status` sensor: `ok`, `devices_offline` or `console_offline` (handy for a red/amber/green badge)
 - `Console offline`, `Device offline` and `Site outage` problem sensors
+- `Applications installed` sensor; its `consoles` attribute lists each console's UniFi OS and application versions (Network, Protect, ...) for dashboards
 - Counts: consoles, consoles offline, devices, devices online, devices offline, unconfirmed offline, firmware updates available, firmware updates overdue, ignored
 - `Oldest pending firmware update` in days, and a `Firmware updates overdue` problem sensor
 - Attributes listing what is offline, grouped by host
+
+Updates for applications running on a console (Network, Protect, Access, ...) are included in the counts, the pending list and the overdue tracking, shown as `Network (application)` and so on.
 
 The update entities are **read-only**: they report that a firmware update exists but never install anything.
 
