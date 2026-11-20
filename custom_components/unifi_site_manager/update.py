@@ -73,7 +73,15 @@ class HostFirmwareUpdate(HostEntity, UpdateEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         host = self.host
-        return {"firmware_status": host.firmware_status} if host else None
+        if host is None:
+            return None
+        return {
+            "firmware_status": host.firmware_status,
+            "update_pending_since": host.update_since.isoformat()
+            if host.update_since
+            else None,
+            "update_overdue": host.update_overdue,
+        }
 
 
 class DeviceFirmwareUpdate(DeviceEntity, UpdateEntity):
@@ -101,4 +109,12 @@ class DeviceFirmwareUpdate(DeviceEntity, UpdateEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         dev = self.dev
-        return {"firmware_status": dev.firmware_status} if dev else None
+        if dev is None:
+            return None
+        return {
+            "firmware_status": dev.firmware_status,
+            "update_pending_since": dev.update_since.isoformat()
+            if dev.update_since
+            else None,
+            "update_overdue": dev.update_overdue,
+        }

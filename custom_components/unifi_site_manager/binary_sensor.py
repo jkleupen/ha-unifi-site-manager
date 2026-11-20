@@ -43,11 +43,21 @@ ACCOUNT_BINARY_SENSORS: tuple[AccountBinaryDescription, ...] = (
         attr_fn=lambda s: {"devices": s["offline_devices"]},
     ),
     AccountBinaryDescription(
+        key="updates_overdue",
+        name="Firmware updates overdue",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        is_on_fn=lambda s: s["updates_overdue"] > 0,
+        attr_fn=lambda s: {
+            "count": s["updates_overdue"],
+            "devices": s["overdue_updates"],
+        },
+    ),
+    AccountBinaryDescription(
         key="site_outage",
         name="Site outage",
         device_class=BinarySensorDeviceClass.PROBLEM,
         is_on_fn=lambda s: len(s["sites_with_outage"]) > 0,
-        attr_fn=lambda s: {"sites": s["sites_with_outage"]},
+        attr_fn=lambda s: {"sites": s["sites_down"]},
     ),
 )
 

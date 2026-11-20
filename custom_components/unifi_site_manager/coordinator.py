@@ -27,20 +27,23 @@ from .const import (
     CONF_OUTAGE_DEVICES,
     CONF_OUTAGE_MINUTES,
     CONF_SCAN_INTERVAL,
+    CONF_STALE_UPDATE_DAYS,
     DEFAULT_CONFIRM_POLLS,
     DEFAULT_IGNORE_PREFIXES,
     DEFAULT_OUTAGE_DEVICES,
     DEFAULT_OUTAGE_MINUTES,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_STALE_UPDATE_DAYS,
     DOMAIN,
     STORAGE_SAVE_DELAY,
     STORAGE_VERSION,
 )
 from .processing import (
-    OfflineState,
     ProcessingOptions,
     SiteManagerData,
+    TrackerState,
     decode_state,
+    diff_events,
     encode_state,
     parse_prefixes,
     process,
@@ -85,25 +88,18 @@ class UnifiSiteManagerCoordinator(DataUpdateCoordinator[SiteManagerData]):
             update_interval=timedelta(minutes=minutes),
         )
         self._client = client
-        self._host_state: OfflineState = {}
-        self._device_state: OfflineState = {}
+        self._tracker = TrackerState()
         self._store: Store[dict[str, Any]] = Store(
             hass, STORAGE_VERSION, storage_key(config_entry.entry_id)
         )
 
     async def _async_setup(self) -> None:
-        """Restore offline timers so restarts don't reset 'first seen offline'."""
-        stored = await self._store.async_load()
-        if isinstance(stored, dict):
-            self._host_state = decode_state(stored.get("hosts"))
-            self._device_state = decode_state(stored.get("devices"))
+        """Restore timers so restarts don't reset 'first seen offline' or update age."""
+        self._tracker = decode_state(await self._store.async_load())
 
     @callback
     def _data_to_save(self) -> dict[str, Any]:
-        return {
-            "hosts": encode_state(self._host_state),
-            "devices": encode_state(self._device_state),
-        }
+        return encode_state(self._tracker)
 
     def _options(self) -> ProcessingOptions:
         opts = self.config_entry.options
@@ -114,6 +110,9 @@ class UnifiSiteManagerCoordinator(DataUpdateCoordinator[SiteManagerData]):
             confirm_polls=int(opts.get(CONF_CONFIRM_POLLS, DEFAULT_CONFIRM_POLLS)),
             outage_devices=int(opts.get(CONF_OUTAGE_DEVICES, DEFAULT_OUTAGE_DEVICES)),
             outage_minutes=int(opts.get(CONF_OUTAGE_MINUTES, DEFAULT_OUTAGE_MINUTES)),
+            stale_update_days=int(
+                opts.get(CONF_STALE_UPDATE_DAYS, DEFAULT_STALE_UPDATE_DAYS)
+            ),
         )
 
     async def _async_update_data(self) -> SiteManagerData:
@@ -128,15 +127,18 @@ class UnifiSiteManagerCoordinator(DataUpdateCoordinator[SiteManagerData]):
         except UnifiApiError as err:
             raise UpdateFailed(str(err)) from err
 
-        data, self._host_state, self._device_state = process(
+        data, self._tracker = process(
             raw_hosts,
             raw_devices,
-            self._host_state,
-            self._device_state,
+            self._tracker,
             self._options(),
             dt_util.utcnow(),
         )
         self._store.async_delay_save(self._data_to_save, STORAGE_SAVE_DELAY)
+
+        # self.data is still the previous poll here (None on the first poll).
+        for suffix, payload in diff_events(self.data, data):
+            self.hass.bus.async_fire(f"{DOMAIN}_{suffix}", payload)
         return data
 
     @callback

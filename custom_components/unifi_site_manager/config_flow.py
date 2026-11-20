@@ -26,12 +26,14 @@ from .const import (
     CONF_OUTAGE_DEVICES,
     CONF_OUTAGE_MINUTES,
     CONF_SCAN_INTERVAL,
+    CONF_STALE_UPDATE_DAYS,
     DEFAULT_CONFIRM_POLLS,
     DEFAULT_DEVICE_ENTITIES,
     DEFAULT_IGNORE_PREFIXES,
     DEFAULT_OUTAGE_DEVICES,
     DEFAULT_OUTAGE_MINUTES,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_STALE_UPDATE_DAYS,
     DOMAIN,
 )
 
@@ -141,6 +143,10 @@ class UnifiOptionsFlow(OptionsFlow):
                     CONF_OUTAGE_MINUTES,
                     default=opts.get(CONF_OUTAGE_MINUTES, DEFAULT_OUTAGE_MINUTES),
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=1440)),
+                vol.Required(
+                    CONF_STALE_UPDATE_DAYS,
+                    default=opts.get(CONF_STALE_UPDATE_DAYS, DEFAULT_STALE_UPDATE_DAYS),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=365)),
                 vol.Required(
                     CONF_DEVICE_ENTITIES,
                     default=opts.get(CONF_DEVICE_ENTITIES, DEFAULT_DEVICE_ENTITIES),

@@ -19,10 +19,40 @@ It discovers consoles and devices automatically and creates entities for each. T
 **Account-wide**, on the "UniFi Site Manager" device
 - `Status` sensor: `ok`, `devices_offline` or `console_offline` (handy for a red/amber/green badge)
 - `Console offline`, `Device offline` and `Site outage` problem sensors
-- Counts: consoles, consoles offline, devices, devices online, devices offline, unconfirmed offline, firmware updates available, ignored
+- Counts: consoles, consoles offline, devices, devices online, devices offline, unconfirmed offline, firmware updates available, firmware updates overdue, ignored
+- `Oldest pending firmware update` in days, and a `Firmware updates overdue` problem sensor
 - Attributes listing what is offline, grouped by host
 
 The update entities are **read-only**: they report that a firmware update exists but never install anything.
+
+## Events for alerts
+
+When something changes state, the integration fires an event you can use as an automation trigger. Each fires once per transition, never on the first poll after a restart, so a restart does not re-send old alerts.
+
+| Event | Payload |
+|---|---|
+| `unifi_site_manager_console_offline` | `consoles`: list of `{name, ip, since}` for consoles that just became confirmed offline |
+| `unifi_site_manager_console_recovered` | `consoles`: list of `{name}` |
+| `unifi_site_manager_site_outage` | `site`, `count`, `minutes`, `devices` (comma separated names) |
+| `unifi_site_manager_site_recovered` | `site` |
+| `unifi_site_manager_updates_overdue` | `count`, and `devices`: list of `{site, name, model, installed, latest, since, days}` for updates that just became overdue (up to 25) |
+
+### How firmware update age works
+
+The API says an update is available but not when it was released, so the age is measured from the first time the integration saw that update pending. Those times are saved, so restarts don't reset them. This means nothing can be overdue until the integration has run for the whole threshold (30 days by default). Once a device is updated, its timer clears, and a later update starts a new one.
+
+Example automation trigger:
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: unifi_site_manager_site_outage
+actions:
+  - action: notify.notify
+    data:
+      title: "UniFi: multiple devices down at {{ trigger.event.data.site }}"
+      message: "{{ trigger.event.data.count }} devices offline for {{ trigger.event.data.minutes }}+ min: {{ trigger.event.data.devices }}"
+```
 
 ## Install
 
@@ -46,6 +76,7 @@ Open the integration and choose **Configure**:
 | Consecutive offline polls | 2 | A device or console counts as offline only after this many polls in a row, so a single blip does not alert |
 | Devices down to raise a site outage | 2 | Number of devices at one site |
 | Minutes those devices must be down | 30 | How long they must have been offline |
+| Days before a firmware update is overdue | 30 | A pending update counts as overdue once it has been waiting this long |
 | Create per-device entities | on | Turn off to keep only consoles and the account-wide totals |
 
 Changing an option reloads the integration.

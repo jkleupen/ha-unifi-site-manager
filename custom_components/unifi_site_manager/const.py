@@ -20,6 +20,7 @@ CONF_CONFIRM_POLLS = "confirm_polls"
 CONF_OUTAGE_DEVICES = "outage_devices"
 CONF_OUTAGE_MINUTES = "outage_minutes"
 CONF_DEVICE_ENTITIES = "device_entities"
+CONF_STALE_UPDATE_DAYS = "stale_update_days"
 
 DEFAULT_SCAN_INTERVAL = 15
 DEFAULT_IGNORE_PREFIXES = "OLD,SPARE,IT Spare"
@@ -27,6 +28,8 @@ DEFAULT_CONFIRM_POLLS = 2
 DEFAULT_OUTAGE_DEVICES = 2
 DEFAULT_OUTAGE_MINUTES = 30
 DEFAULT_DEVICE_ENTITIES = True
+DEFAULT_STALE_UPDATE_DAYS = 30
 
-# Cap on the number of offline items listed in entity attributes.
+# Cap on the number of items listed in entity attributes and event payloads.
 MAX_LISTED = 50
+EVENT_MAX_ITEMS = 25

@@ -36,11 +36,13 @@
           "confirm_polls": "Consecutive offline polls before a device counts as offline",
           "outage_devices": "Devices down at one site to raise a site outage",
           "outage_minutes": "Minutes those devices must have been down",
-          "device_entities": "Create connectivity and firmware entities for every device"
+          "device_entities": "Create connectivity and firmware entities for every device",
+          "stale_update_days": "Days a firmware update can be pending before it counts as overdue"
         },
         "data_description": {
           "ignore_prefixes": "Case-insensitive. Matching consoles and devices are left out of every count and get no entities.",
-          "device_entities": "Turn off to keep only consoles and the account-wide totals."
+          "device_entities": "Turn off to keep only consoles and the account-wide totals.",
+          "stale_update_days": "Age is measured from when the integration first saw the update, so it starts counting after install."
         }
       }
     }

@@ -9,10 +9,21 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from .const import MAX_LISTED
+from .const import EVENT_MAX_ITEMS, MAX_LISTED
 
 # {id: (consecutive polls seen offline, time first seen offline)}
 OfflineState = dict[str, tuple[int, datetime | None]]
+# {id: time a firmware update was first seen pending}
+PendingState = dict[str, datetime]
+
+
+@dataclass(slots=True)
+class TrackerState:
+    """Counters and timers carried from one poll to the next (and saved to disk)."""
+
+    hosts: OfflineState = field(default_factory=dict)
+    devices: OfflineState = field(default_factory=dict)
+    updates: PendingState = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -23,6 +34,7 @@ class ProcessingOptions:
     confirm_polls: int = 2
     outage_devices: int = 2
     outage_minutes: int = 30
+    stale_update_days: int = 30
 
 
 @dataclass(slots=True)
@@ -38,13 +50,18 @@ class SiteHost:
     version: str | None = None
     firmware_status: str | None = None
     update_available: str | None = None
+    update_since: datetime | None = None
+    update_overdue: bool = False
     misses: int = 0
     offline_since: datetime | None = None
     confirmed_offline: bool = False
     outage: bool = False
+    outage_devices: list[str] = field(default_factory=list)
+    outage_minutes: int = 0
     devices_total: int = 0
     devices_offline: int = 0
     updates_available: int = 0
+    updates_overdue: int = 0
 
 
 @dataclass(slots=True)
@@ -69,6 +86,8 @@ class SiteDevice:
     misses: int = 0
     offline_since: datetime | None = None
     confirmed_offline: bool = False
+    update_since: datetime | None = None
+    update_overdue: bool = False
 
 
 @dataclass(slots=True)
@@ -92,16 +111,14 @@ def is_ignored(name: str, prefixes: tuple[str, ...]) -> bool:
     return bool(prefixes) and name.strip().lower().startswith(prefixes)
 
 
-def encode_state(state: OfflineState) -> dict[str, list[Any]]:
-    """Turn offline counters into JSON-safe data for storage."""
+def _encode_offline(state: OfflineState) -> dict[str, list[Any]]:
     return {
         key: [misses, since.isoformat() if since else None]
         for key, (misses, since) in state.items()
     }
 
 
-def decode_state(raw: Any) -> OfflineState:
-    """Rebuild offline counters from stored data, skipping anything malformed."""
+def _decode_offline(raw: Any) -> OfflineState:
     result: OfflineState = {}
     if not isinstance(raw, dict):
         return result
@@ -113,6 +130,34 @@ def decode_state(raw: Any) -> OfflineState:
             continue
         result[str(key)] = (misses, since)
     return result
+
+
+def encode_state(state: TrackerState) -> dict[str, Any]:
+    """Turn the tracker state into JSON-safe data for storage."""
+    return {
+        "hosts": _encode_offline(state.hosts),
+        "devices": _encode_offline(state.devices),
+        "updates": {key: since.isoformat() for key, since in state.updates.items()},
+    }
+
+
+def decode_state(raw: Any) -> TrackerState:
+    """Rebuild the tracker state from stored data, skipping anything malformed."""
+    if not isinstance(raw, dict):
+        return TrackerState()
+    updates: PendingState = {}
+    raw_updates = raw.get("updates")
+    if isinstance(raw_updates, dict):
+        for key, value in raw_updates.items():
+            try:
+                updates[str(key)] = datetime.fromisoformat(value)
+            except (TypeError, ValueError):
+                continue
+    return TrackerState(
+        hosts=_decode_offline(raw.get("hosts")),
+        devices=_decode_offline(raw.get("devices")),
+        updates=updates,
+    )
 
 
 def _update_value(update: Any, firmware_status: str | None) -> str | None:
@@ -136,18 +181,33 @@ def _track(
     return misses + 1, since or now
 
 
+def _pending(
+    previous: PendingState,
+    current: PendingState,
+    ident: str,
+    update: str | None,
+    now: datetime,
+) -> datetime | None:
+    """When was this item's update first seen? Clears once no update is pending."""
+    if not update:
+        return None
+    since = previous.get(ident) or now
+    current[ident] = since
+    return since
+
+
 def process(
     raw_hosts: list[dict[str, Any]],
     raw_devices: list[dict[str, Any]],
-    prev_hosts: OfflineState,
-    prev_devices: OfflineState,
+    prev: TrackerState,
     options: ProcessingOptions,
     now: datetime,
-) -> tuple[SiteManagerData, OfflineState, OfflineState]:
+) -> tuple[SiteManagerData, TrackerState]:
     """Turn raw /v1/hosts and /v1/devices output into SiteManagerData."""
-    hosts: dict[str, SiteHost] = {}
-    host_state: OfflineState = {}
+    state = TrackerState()
+    stale_cutoff = now - timedelta(days=options.stale_update_days)
 
+    hosts: dict[str, SiteHost] = {}
     for raw in raw_hosts:
         host_id = raw.get("id")
         if not host_id:
@@ -156,8 +216,8 @@ def process(
         name = str(reported.get("hostname") or reported.get("name") or host_id)
         status = str(reported.get("state") or "").lower()
         connected = status not in ("disconnected", "offline")
-        misses, since = _track(prev_hosts, host_id, not connected, now)
-        host_state[host_id] = (misses, since)
+        misses, since = _track(prev.hosts, host_id, not connected, now)
+        state.hosts[host_id] = (misses, since)
         hosts[host_id] = SiteHost(
             id=host_id,
             name=name,
@@ -170,8 +230,6 @@ def process(
         )
 
     devices: dict[str, SiteDevice] = {}
-    device_state: OfflineState = {}
-
     for group in raw_devices:
         host_id = group.get("hostId")
         host = hosts.get(host_id) if host_id else None
@@ -193,6 +251,12 @@ def process(
                 host.version = version
                 host.firmware_status = firmware_status
                 host.update_available = update
+                host.update_since = _pending(
+                    prev.updates, state.updates, f"host:{host_id}", update, now
+                )
+                host.update_overdue = bool(
+                    host.update_since and host.update_since <= stale_cutoff
+                )
                 continue
 
             name = str(
@@ -201,8 +265,9 @@ def process(
             status = str(raw.get("status") or "").lower()
             offline = status in ("offline", "disconnected")
             key = f"{host_id}_{dev_id}"
-            misses, since = _track(prev_devices, key, offline, now)
-            device_state[key] = (misses, since)
+            misses, since = _track(prev.devices, key, offline, now)
+            state.devices[key] = (misses, since)
+            update_since = _pending(prev.updates, state.updates, key, update, now)
             devices[key] = SiteDevice(
                 key=key,
                 id=str(dev_id),
@@ -222,6 +287,8 @@ def process(
                 misses=misses,
                 offline_since=since,
                 confirmed_offline=(offline and misses >= options.confirm_polls),
+                update_since=update_since,
+                update_overdue=bool(update_since and update_since <= stale_cutoff),
             )
 
     # Per-host roll-ups and site outage detection.
@@ -231,16 +298,97 @@ def process(
         host.devices_total = len(mine)
         host.devices_offline = sum(1 for d in mine if d.confirmed_offline)
         host.updates_available = sum(1 for d in mine if d.update_available)
+        host.updates_overdue = sum(1 for d in mine if d.update_overdue)
         long_down = [
             d
             for d in mine
             if d.confirmed_offline and d.offline_since and d.offline_since <= cutoff
         ]
         host.outage = (not host.ignored) and len(long_down) >= options.outage_devices
+        if host.outage:
+            host.outage_devices = sorted(d.name for d in long_down)
+            host.outage_minutes = int(
+                (now - min(d.offline_since for d in long_down if d.offline_since))
+                .total_seconds()
+                // 60
+            )
 
     data = SiteManagerData(hosts=hosts, devices=devices)
     data.summary = build_summary(data, now)
-    return data, host_state, device_state
+    return data, state
+
+
+def diff_events(
+    prev: SiteManagerData | None, curr: SiteManagerData
+) -> list[tuple[str, dict[str, Any]]]:
+    """Work out which alert events to fire between two consecutive polls.
+
+    Returns (event suffix, payload) pairs. Nothing fires on the first poll
+    after startup (prev is None), so a restart never re-sends old alerts.
+    """
+    if prev is None:
+        return []
+
+    went_down: list[dict[str, Any]] = []
+    came_back: list[dict[str, Any]] = []
+    site_events: list[tuple[str, dict[str, Any]]] = []
+
+    for host in curr.hosts.values():
+        if host.ignored:
+            continue
+        old = prev.hosts.get(host.id)
+        was_down = bool(old and not old.ignored and old.confirmed_offline)
+        was_outage = bool(old and not old.ignored and old.outage)
+
+        if host.confirmed_offline and not was_down:
+            went_down.append(
+                {
+                    "name": host.name,
+                    "ip": host.ip,
+                    "since": host.offline_since.isoformat()
+                    if host.offline_since
+                    else None,
+                }
+            )
+        elif was_down and not host.confirmed_offline:
+            came_back.append({"name": host.name})
+
+        if host.outage and not was_outage:
+            site_events.append(
+                (
+                    "site_outage",
+                    {
+                        "site": host.name,
+                        "count": len(host.outage_devices),
+                        "minutes": host.outage_minutes,
+                        "devices": ", ".join(host.outage_devices),
+                    },
+                )
+            )
+        elif was_outage and not host.outage:
+            site_events.append(("site_recovered", {"site": host.name}))
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    if went_down:
+        events.append(("console_offline", {"consoles": went_down}))
+    if came_back:
+        events.append(("console_recovered", {"consoles": came_back}))
+    events.extend(site_events)
+
+    # Firmware updates that just crossed the "overdue" threshold.
+    curr_overdue: dict[str, dict[str, Any]] = curr.summary.get("overdue_by_key", {})
+    prev_overdue: dict[str, dict[str, Any]] = prev.summary.get("overdue_by_key", {})
+    newly = [item for key, item in curr_overdue.items() if key not in prev_overdue]
+    if newly:
+        newly.sort(key=lambda item: -item["days"])
+        events.append(
+            (
+                "updates_overdue",
+                {"count": len(newly), "devices": newly[:EVENT_MAX_ITEMS]},
+            )
+        )
+
+    return events
 
 
 def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
@@ -290,11 +438,75 @@ def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
         }
 
     def _console_item(host: SiteHost) -> dict[str, Any]:
+        minutes = (
+            int((now - host.offline_since).total_seconds() // 60)
+            if host.offline_since
+            else None
+        )
         return {
-            "host": host.name,
+            "name": host.name,
             "ip": host.ip,
             "since": host.offline_since.isoformat() if host.offline_since else None,
+            "age_min": minutes,
         }
+
+    def _site_item(host: SiteHost) -> dict[str, Any]:
+        return {
+            "site": host.name,
+            "count": len(host.outage_devices),
+            "minutes": host.outage_minutes,
+            "devices": list(host.outage_devices),
+        }
+
+    def _update_item(
+        site: str,
+        name: str,
+        model: str | None,
+        installed: str | None,
+        latest: str | None,
+        since: datetime,
+    ) -> dict[str, Any]:
+        return {
+            "site": site,
+            "name": name,
+            "model": model,
+            "installed": installed,
+            "latest": latest,
+            "since": since.isoformat(),
+            "days": int((now - since).total_seconds() // 86400),
+        }
+
+    # Pending firmware updates and how long each has been waiting.
+    pending: dict[str, tuple[bool, dict[str, Any]]] = {}
+    for dev in mon_devs:
+        if dev.update_since:
+            pending[dev.key] = (
+                dev.update_overdue,
+                _update_item(
+                    dev.host_name,
+                    dev.name,
+                    dev.model,
+                    dev.version,
+                    dev.update_available,
+                    dev.update_since,
+                ),
+            )
+    for host in mon_hosts:
+        if host.update_since:
+            pending[f"host:{host.id}"] = (
+                host.update_overdue,
+                _update_item(
+                    host.name,
+                    f"{host.name} (console)",
+                    host.model,
+                    host.version,
+                    host.update_available,
+                    host.update_since,
+                ),
+            )
+    overdue_by_key = {key: item for key, (over, item) in pending.items() if over}
+    overdue_items = sorted(overdue_by_key.values(), key=lambda i: -i["days"])
+    oldest_days = max((item["days"] for _, item in pending.values()), default=0)
 
     return {
         "status": status,
@@ -306,9 +518,14 @@ def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
         "devices_pending": len(devs_pending),
         "devices_online": len(mon_devs) - len(devs_offline) - len(devs_pending),
         "updates_available": updates,
+        "updates_overdue": len(overdue_by_key),
+        "oldest_update_days": oldest_days,
+        "overdue_updates": overdue_items[:MAX_LISTED],
+        "overdue_by_key": overdue_by_key,
         "ignored": sum(1 for d in data.devices.values() if d.ignored)
         + sum(1 for h in data.hosts.values() if h.ignored),
         "sites_with_outage": [h.name for h in outage_hosts],
+        "sites_down": [_site_item(h) for h in outage_hosts],
         "offline_by_host": offline_by_host,
         "offline_devices": [_device_item(d) for d in devs_offline[:MAX_LISTED]],
         "offline_consoles": [_console_item(h) for h in consoles_offline[:MAX_LISTED]],

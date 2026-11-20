@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -49,8 +50,8 @@ ACCOUNT_SENSORS: tuple[AccountSensorDescription, ...] = (
             "offline_count": s["devices_offline"],
             "offline_by_host": s["offline_by_host"],
             "offline_devices": s["offline_devices"],
-            "disconnected_consoles": [c["host"] for c in s["offline_consoles"]],
-            "sites_down": s["sites_with_outage"],
+            "disconnected_consoles": s["offline_consoles"],
+            "sites_down": s["sites_down"],
         },
     ),
     AccountSensorDescription(
@@ -101,6 +102,21 @@ ACCOUNT_SENSORS: tuple[AccountSensorDescription, ...] = (
         value_fn=lambda s: s["updates_available"],
     ),
     AccountSensorDescription(
+        key="updates_overdue",
+        name="Firmware updates overdue",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda s: s["updates_overdue"],
+        attr_fn=lambda s: {"devices": s["overdue_updates"]},
+    ),
+    AccountSensorDescription(
+        key="oldest_update_days",
+        name="Oldest pending firmware update",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda s: s["oldest_update_days"],
+    ),
+    AccountSensorDescription(
         key="ignored",
         name="Ignored",
         state_class=SensorStateClass.MEASUREMENT,
@@ -120,6 +136,12 @@ HOST_SENSORS: tuple[HostSensorDescription, ...] = (
         name="Firmware updates available",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda h: h.updates_available,
+    ),
+    HostSensorDescription(
+        key="updates_overdue",
+        name="Firmware updates overdue",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda h: h.updates_overdue,
     ),
 )
 
