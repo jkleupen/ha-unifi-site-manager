@@ -71,6 +71,7 @@ class SiteHost:
     outage_devices: list[str] = field(default_factory=list)
     outage_minutes: int = 0
     apps: list[AppUpdate] = field(default_factory=list)
+    installed: list[dict[str, Any]] = field(default_factory=list)
     devices_total: int = 0
     devices_offline: int = 0
     updates_available: int = 0
@@ -209,6 +210,28 @@ def _pending(
     return since
 
 
+def _installed_apps(controllers: Any) -> list[dict[str, Any]]:
+    """Installed applications with their version and any pending update."""
+    result: list[dict[str, Any]] = []
+    if not isinstance(controllers, list):
+        return result
+    for ctrl in controllers:
+        if not isinstance(ctrl, dict) or not ctrl.get("isInstalled"):
+            continue
+        name = str(ctrl.get("name") or "").strip()
+        if not name:
+            continue
+        version = ctrl.get("version")
+        result.append(
+            {
+                "name": name,
+                "version": str(version) if version else None,
+                "update": _update_value(ctrl.get("updateAvailable"), None),
+            }
+        )
+    return result
+
+
 def _app_updates(
     controllers: Any,
     host_id: str,
@@ -281,6 +304,7 @@ def process(
         hosts[host_id].apps = _app_updates(
             reported.get("controllers"), host_id, prev, state, stale_cutoff, now
         )
+        hosts[host_id].installed = _installed_apps(reported.get("controllers"))
 
     devices: dict[str, SiteDevice] = {}
     for group in raw_devices:
@@ -598,6 +622,14 @@ def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
         "oldest_update_days": oldest_days,
         "overdue_updates": overdue_items[:MAX_LISTED],
         "pending_updates": pending_items,
+        "app_versions": sorted(
+            (
+                {"site": h.name, "os": h.version, "apps": h.installed}
+                for h in mon_hosts
+            ),
+            key=lambda item: item["site"].lower(),
+        ),
+        "apps_installed": sum(len(h.installed) for h in mon_hosts),
         "overdue_by_key": overdue_by_key,
         "ignored": sum(1 for d in data.devices.values() if d.ignored)
         + sum(1 for h in data.hosts.values() if h.ignored),
