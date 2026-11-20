@@ -220,6 +220,7 @@ def test_app_updates():
                     {"name": "network", "isInstalled": True, "version": "11.0.99", "updateAvailable": "11.0.103"},
                     {"name": "protect", "isInstalled": False, "version": "", "updateAvailable": None},
                     {"name": "access", "isInstalled": True, "version": "4.0", "updateAvailable": None},
+                    {"name": "talk", "isInstalled": True, "version": None, "updateAvailable": "5.4.8"},
                     "junk",
                 ],
             },
@@ -251,9 +252,10 @@ def test_app_updates():
     av = d1.summary["app_versions"]
     assert [i["site"] for i in av] == ["Client A"], av  # ignored console excluded
     names = {a["name"]: a for a in av[0]["apps"]}
-    assert set(names) == {"network", "access"}, names
+    assert set(names) == {"network", "access", "talk"}, names
+    assert names["talk"]["running"] is False and names["network"]["running"] is True
     assert names["network"]["update"] == "11.0.103" and names["access"]["update"] is None
-    assert d1.summary["apps_installed"] == 2
+    assert d1.summary["apps_installed"] == 3
 
     # Updated: the pending entry clears.
     hosts[0]["reportedState"]["controllers"][0]["updateAvailable"] = None

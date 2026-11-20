@@ -228,6 +228,7 @@ def _installed_apps(controllers: Any) -> list[dict[str, Any]]:
                 "name": name,
                 "version": str(version) if version else None,
                 "update": _update_value(ctrl.get("updateAvailable"), None),
+                "running": bool(version),
             }
         )
     return result
@@ -252,6 +253,8 @@ def _app_updates(
         update = _update_value(ctrl.get("updateAvailable"), None)
         if not app or not update:
             continue
+        if not ctrl.get("version"):
+            continue  # installed but not running: no version reported, so skip it
         key = f"app:{host_id}:{app}"
         since = _pending(prev.updates, state.updates, key, update, now)
         if since is None:

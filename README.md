@@ -24,7 +24,7 @@ It discovers consoles and devices automatically and creates entities for each. T
 - `Oldest pending firmware update` in days, and a `Firmware updates overdue` problem sensor
 - Attributes listing what is offline, grouped by host
 
-Updates for applications running on a console (Network, Protect, Access, ...) are included in the counts, the pending list and the overdue tracking, shown as `Network (application)` and so on.
+Updates for applications running on a console (Network, Protect, Access, ...) are included in the counts, the pending list and the overdue tracking, shown as `Network (application)` and so on. Applications that are installed but not running (the console reports no version for them) are skipped, since they cannot be updated until started.
 
 The update entities are **read-only**: they report that a firmware update exists but never install anything.
 
