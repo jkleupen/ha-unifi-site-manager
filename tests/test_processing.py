@@ -19,7 +19,13 @@ for name in ("const", "processing"):
     sys.modules[f"usm.{name}"] = mod
     spec.loader.exec_module(mod)
 
-from usm.processing import ProcessingOptions, parse_prefixes, process  # noqa: E402
+from usm.processing import (  # noqa: E402
+    ProcessingOptions,
+    decode_state,
+    encode_state,
+    parse_prefixes,
+    process,
+)
 
 T0 = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
 
@@ -108,6 +114,20 @@ def main() -> None:
     assert data.devices["h1_a"].update_available == "update available"
     assert data.devices["h1_b"].update_available == "update available"
     assert data.devices["h1_c"].update_available is None
+
+    # Offline timers survive a save/load round trip (i.e. a Home Assistant restart).
+    data, hs, ds = run(opts, HOSTS, devices(), T0)
+    data, hs, ds = run(opts, HOSTS, devices(), T0 + timedelta(minutes=15), (hs, ds))
+    import json
+    saved_h = json.loads(json.dumps(encode_state(hs)))
+    saved_d = json.loads(json.dumps(encode_state(ds)))
+    hs2, ds2 = decode_state(saved_h), decode_state(saved_d)
+    assert hs2 == hs and ds2 == ds
+    data, *_ = run(opts, HOSTS, devices(), T0 + timedelta(minutes=45), (hs2, ds2))
+    assert data.hosts["h1"].outage, "outage must still fire after a restart"
+    assert data.devices["h1_sw1"].offline_since == T0
+    # Garbage in storage is ignored, not fatal.
+    assert decode_state(None) == {} and decode_state({"a": "bad", "b": [1]}) == {}
 
     print("all processing tests passed")
 

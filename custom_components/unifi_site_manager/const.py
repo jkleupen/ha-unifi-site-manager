@@ -10,6 +10,8 @@ MAX_ATTEMPTS = 3  # attempts per request when rate limited (HTTP 429)
 MAX_PAGES = 50  # safety cap when following nextToken pagination
 
 ACCOUNT_DEVICE_ID = "account"
+STORAGE_VERSION = 1
+STORAGE_SAVE_DELAY = 5  # seconds
 
 # Options
 CONF_SCAN_INTERVAL = "scan_interval"  # minutes

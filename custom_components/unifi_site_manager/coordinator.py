@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 import logging
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -31,16 +33,25 @@ from .const import (
     DEFAULT_OUTAGE_MINUTES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    STORAGE_SAVE_DELAY,
+    STORAGE_VERSION,
 )
 from .processing import (
     OfflineState,
     ProcessingOptions,
     SiteManagerData,
+    decode_state,
+    encode_state,
     parse_prefixes,
     process,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def storage_key(entry_id: str) -> str:
+    """Storage file name for a config entry's offline timers."""
+    return f"{DOMAIN}.{entry_id}"
 
 
 def host_device_id(host_id: str) -> str:
@@ -76,6 +87,23 @@ class UnifiSiteManagerCoordinator(DataUpdateCoordinator[SiteManagerData]):
         self._client = client
         self._host_state: OfflineState = {}
         self._device_state: OfflineState = {}
+        self._store: Store[dict[str, Any]] = Store(
+            hass, STORAGE_VERSION, storage_key(config_entry.entry_id)
+        )
+
+    async def _async_setup(self) -> None:
+        """Restore offline timers so restarts don't reset 'first seen offline'."""
+        stored = await self._store.async_load()
+        if isinstance(stored, dict):
+            self._host_state = decode_state(stored.get("hosts"))
+            self._device_state = decode_state(stored.get("devices"))
+
+    @callback
+    def _data_to_save(self) -> dict[str, Any]:
+        return {
+            "hosts": encode_state(self._host_state),
+            "devices": encode_state(self._device_state),
+        }
 
     def _options(self) -> ProcessingOptions:
         opts = self.config_entry.options
@@ -108,6 +136,7 @@ class UnifiSiteManagerCoordinator(DataUpdateCoordinator[SiteManagerData]):
             self._options(),
             dt_util.utcnow(),
         )
+        self._store.async_delay_save(self._data_to_save, STORAGE_SAVE_DELAY)
         return data
 
     @callback

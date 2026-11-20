@@ -53,7 +53,7 @@ Changing an option reloads the integration.
 ## Notes and limits
 
 - "Site" means a UniFi console (host) as the API reports it.
-- Offline timers are kept in memory, so a Home Assistant restart restarts the "confirmed offline" and "site outage" clocks.
+- "First seen offline" times and the offline counters are saved to Home Assistant's storage, so they survive restarts and reloads. The saved data is deleted if you remove the integration.
 - Devices that disappear from your account leave their entities unavailable until you delete them in Home Assistant.
 - With many devices the integration creates two entities per device. Turn off per-device entities if you only want the totals.
 - The API enforces rate limits. The integration honors `Retry-After` and otherwise just tries again at the next poll.

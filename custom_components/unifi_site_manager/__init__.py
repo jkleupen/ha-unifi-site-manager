@@ -5,9 +5,11 @@ from __future__ import annotations
 from homeassistant.const import CONF_API_KEY, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 
 from .api import SiteManagerClient
-from .coordinator import UnifiConfigEntry, UnifiSiteManagerCoordinator
+from .const import STORAGE_VERSION
+from .coordinator import UnifiConfigEntry, UnifiSiteManagerCoordinator, storage_key
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.UPDATE]
 
@@ -32,3 +34,8 @@ async def _async_reload_on_update(hass: HomeAssistant, entry: UnifiConfigEntry) 
 async def async_unload_entry(hass: HomeAssistant, entry: UnifiConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: UnifiConfigEntry) -> None:
+    """Delete the stored offline timers when the integration is removed."""
+    await Store(hass, STORAGE_VERSION, storage_key(entry.entry_id)).async_remove()

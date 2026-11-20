@@ -92,6 +92,29 @@ def is_ignored(name: str, prefixes: tuple[str, ...]) -> bool:
     return bool(prefixes) and name.strip().lower().startswith(prefixes)
 
 
+def encode_state(state: OfflineState) -> dict[str, list[Any]]:
+    """Turn offline counters into JSON-safe data for storage."""
+    return {
+        key: [misses, since.isoformat() if since else None]
+        for key, (misses, since) in state.items()
+    }
+
+
+def decode_state(raw: Any) -> OfflineState:
+    """Rebuild offline counters from stored data, skipping anything malformed."""
+    result: OfflineState = {}
+    if not isinstance(raw, dict):
+        return result
+    for key, value in raw.items():
+        try:
+            misses = int(value[0])
+            since = datetime.fromisoformat(value[1]) if value[1] else None
+        except (TypeError, ValueError, IndexError):
+            continue
+        result[str(key)] = (misses, since)
+    return result
+
+
 def _update_value(update: Any, firmware_status: str | None) -> str | None:
     """Normalise the API's updateAvailable field to a version string or None."""
     if update in (None, False, ""):
