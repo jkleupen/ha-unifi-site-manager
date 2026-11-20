@@ -505,6 +505,10 @@ def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
                 ),
             )
     overdue_by_key = {key: item for key, (over, item) in pending.items() if over}
+    pending_items = sorted(
+        ({**item, "overdue": over} for over, item in pending.values()),
+        key=lambda i: (i["site"].lower(), -i["days"], i["name"].lower()),
+    )
     overdue_items = sorted(overdue_by_key.values(), key=lambda i: -i["days"])
     oldest_days = max((item["days"] for _, item in pending.values()), default=0)
 
@@ -521,6 +525,7 @@ def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
         "updates_overdue": len(overdue_by_key),
         "oldest_update_days": oldest_days,
         "overdue_updates": overdue_items[:MAX_LISTED],
+        "pending_updates": pending_items,
         "overdue_by_key": overdue_by_key,
         "ignored": sum(1 for d in data.devices.values() if d.ignored)
         + sum(1 for h in data.hosts.values() if h.ignored),

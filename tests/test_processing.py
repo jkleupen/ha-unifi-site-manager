@@ -167,6 +167,11 @@ def test_stale_updates():
     assert d1.summary["updates_overdue"] == 0 and d1.summary["oldest_update_days"] == 0
     assert d1.devices["h1_ap1"].update_since == T0
 
+    pend = d1.summary["pending_updates"]
+    assert len(pend) == d1.summary["updates_available"], pend
+    assert {"site", "name", "model", "installed", "latest", "since", "days", "overdue"} <= set(pend[0])
+    assert not any(i["overdue"] for i in pend)
+
     # 29 days later: still within the 30 day window.
     d2, st = run(HOSTS, devices(), T0 + 29 * day, st)
     assert d2.summary["updates_overdue"] == 0 and d2.summary["oldest_update_days"] == 29
@@ -176,6 +181,7 @@ def test_stale_updates():
     d3, st = run(HOSTS, devices(), T0 + 31 * day, st)
     assert d3.summary["updates_overdue"] == 2, d3.summary
     assert d3.hosts["h1"].updates_overdue == 1 and d3.hosts["h1"].update_overdue
+    assert sum(i["overdue"] for i in d3.summary["pending_updates"]) == 2
     events = [e for e in diff_events(d2, d3) if e[0] == "updates_overdue"]
     assert len(events) == 1 and events[0][1]["count"] == 2, events
     assert {i["name"] for i in events[0][1]["devices"]} == {"AP 1", "Client A (console)"}

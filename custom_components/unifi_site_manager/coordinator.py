@@ -89,6 +89,9 @@ class UnifiSiteManagerCoordinator(DataUpdateCoordinator[SiteManagerData]):
         )
         self._client = client
         self._tracker = TrackerState()
+        # Last raw API payloads, kept only for the diagnostics download.
+        self.raw_hosts: list[Any] = []
+        self.raw_devices: list[Any] = []
         self._store: Store[dict[str, Any]] = Store(
             hass, STORAGE_VERSION, storage_key(config_entry.entry_id)
         )
@@ -126,6 +129,9 @@ class UnifiSiteManagerCoordinator(DataUpdateCoordinator[SiteManagerData]):
             raise UpdateFailed(f"Rate limited by the Site Manager API: {err}") from err
         except UnifiApiError as err:
             raise UpdateFailed(str(err)) from err
+
+        self.raw_hosts = raw_hosts
+        self.raw_devices = raw_devices
 
         data, self._tracker = process(
             raw_hosts,

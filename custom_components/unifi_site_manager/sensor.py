@@ -100,6 +100,7 @@ ACCOUNT_SENSORS: tuple[AccountSensorDescription, ...] = (
         name="Firmware updates available",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda s: s["updates_available"],
+        attr_fn=lambda s: {"devices": s["pending_updates"]},
     ),
     AccountSensorDescription(
         key="updates_overdue",
@@ -185,6 +186,18 @@ class AccountSensor(AccountEntity, SensorEntity):
     """Account-wide count or status."""
 
     entity_description: AccountSensorDescription
+
+    # Long lists would bloat the database; dashboards only need the live state.
+    _unrecorded_attributes = frozenset(
+        {
+            "devices",
+            "offline_devices",
+            "disconnected_consoles",
+            "sites_down",
+            "offline_by_host",
+            "summary",
+        }
+    )
 
     def __init__(
         self,

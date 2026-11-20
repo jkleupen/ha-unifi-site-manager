@@ -37,7 +37,11 @@ When something changes state, the integration fires an event you can use as an a
 | `unifi_site_manager_site_recovered` | `site` |
 | `unifi_site_manager_updates_overdue` | `count`, and `devices`: list of `{site, name, model, installed, latest, since, days}` for updates that just became overdue (up to 25) |
 
-### How firmware update age works
+### Diagnostics
+
+Download diagnostics from the integration page to see which fields the Site Manager API returns (identifiers, IPs and MACs are redacted). Useful for checking whether something such as per-application versions is available.
+
+## How firmware update age works
 
 The API says an update is available but not when it was released, so the age is measured from the first time the integration saw that update pending. Those times are saved, so restarts don't reset them. This means nothing can be overdue until the integration has run for the whole threshold (30 days by default). Once a device is updated, its timer clears, and a later update starts a new one.
 
