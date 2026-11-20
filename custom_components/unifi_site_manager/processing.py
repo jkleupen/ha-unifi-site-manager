@@ -38,6 +38,18 @@ class ProcessingOptions:
 
 
 @dataclass(slots=True)
+class AppUpdate:
+    """A pending update for an application (Network, Protect, ...) on a console."""
+
+    key: str
+    name: str
+    installed: str | None
+    latest: str
+    since: datetime
+    overdue: bool
+
+
+@dataclass(slots=True)
 class SiteHost:
     """A UniFi console (the API calls it a host)."""
 
@@ -58,6 +70,7 @@ class SiteHost:
     outage: bool = False
     outage_devices: list[str] = field(default_factory=list)
     outage_minutes: int = 0
+    apps: list[AppUpdate] = field(default_factory=list)
     devices_total: int = 0
     devices_offline: int = 0
     updates_available: int = 0
@@ -196,6 +209,43 @@ def _pending(
     return since
 
 
+def _app_updates(
+    controllers: Any,
+    host_id: str,
+    prev: TrackerState,
+    state: TrackerState,
+    stale_cutoff: datetime,
+    now: datetime,
+) -> list[AppUpdate]:
+    """Pending updates for installed applications, from a console's controllers."""
+    found: list[AppUpdate] = []
+    if not isinstance(controllers, list):
+        return found
+    for ctrl in controllers:
+        if not isinstance(ctrl, dict) or not ctrl.get("isInstalled"):
+            continue
+        app = str(ctrl.get("name") or "").strip()
+        update = _update_value(ctrl.get("updateAvailable"), None)
+        if not app or not update:
+            continue
+        key = f"app:{host_id}:{app}"
+        since = _pending(prev.updates, state.updates, key, update, now)
+        if since is None:
+            continue
+        version = ctrl.get("version")
+        found.append(
+            AppUpdate(
+                key=key,
+                name=app,
+                installed=str(version) if version else None,
+                latest=update,
+                since=since,
+                overdue=since <= stale_cutoff,
+            )
+        )
+    return found
+
+
 def process(
     raw_hosts: list[dict[str, Any]],
     raw_devices: list[dict[str, Any]],
@@ -227,6 +277,9 @@ def process(
             misses=misses,
             offline_since=since,
             confirmed_offline=(not connected and misses >= options.confirm_polls),
+        )
+        hosts[host_id].apps = _app_updates(
+            reported.get("controllers"), host_id, prev, state, stale_cutoff, now
         )
 
     devices: dict[str, SiteDevice] = {}
@@ -297,8 +350,12 @@ def process(
         mine = [d for d in devices.values() if d.host_id == host.id and not d.ignored]
         host.devices_total = len(mine)
         host.devices_offline = sum(1 for d in mine if d.confirmed_offline)
-        host.updates_available = sum(1 for d in mine if d.update_available)
-        host.updates_overdue = sum(1 for d in mine if d.update_overdue)
+        host.updates_available = sum(1 for d in mine if d.update_available) + len(
+            host.apps
+        )
+        host.updates_overdue = sum(1 for d in mine if d.update_overdue) + sum(
+            1 for a in host.apps if a.overdue
+        )
         long_down = [
             d
             for d in mine
@@ -403,8 +460,10 @@ def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
     )
     devs_pending = [d for d in mon_devs if d.offline and not d.confirmed_offline]
     outage_hosts = [h for h in mon_hosts if h.outage]
-    updates = sum(1 for d in mon_devs if d.update_available) + sum(
-        1 for h in mon_hosts if h.update_available
+    updates = (
+        sum(1 for d in mon_devs if d.update_available)
+        + sum(1 for h in mon_hosts if h.update_available)
+        + sum(len(h.apps) for h in mon_hosts)
     )
 
     offline_by_host: dict[str, int] = {}
@@ -502,6 +561,19 @@ def build_summary(data: SiteManagerData, now: datetime) -> dict[str, Any]:
                     host.version,
                     host.update_available,
                     host.update_since,
+                ),
+            )
+    for host in mon_hosts:
+        for app in host.apps:
+            pending[app.key] = (
+                app.overdue,
+                _update_item(
+                    host.name,
+                    f"{app.name.capitalize()} (application)",
+                    "Application",
+                    app.installed,
+                    app.latest,
+                    app.since,
                 ),
             )
     overdue_by_key = {key: item for key, (over, item) in pending.items() if over}

@@ -207,12 +207,60 @@ def test_stale_updates():
     assert s2.summary["updates_overdue"] == 2
 
 
+def test_app_updates():
+    day = timedelta(days=1)
+    hosts = [
+        {
+            "id": "h1",
+            "ipAddress": "10.0.0.1",
+            "reportedState": {
+                "hostname": "Client A",
+                "state": "connected",
+                "controllers": [
+                    {"name": "network", "isInstalled": True, "version": "11.0.99", "updateAvailable": "11.0.103"},
+                    {"name": "protect", "isInstalled": False, "version": "", "updateAvailable": None},
+                    {"name": "access", "isInstalled": True, "version": "4.0", "updateAvailable": None},
+                    "junk",
+                ],
+            },
+        },
+        {
+            "id": "h3",
+            "ipAddress": "10.0.0.3",
+            "reportedState": {
+                "hostname": "OLD Console",
+                "state": "connected",
+                "controllers": [{"name": "network", "isInstalled": True, "version": "1", "updateAvailable": "2"}],
+            },
+        },
+    ]
+    d1, st = run(hosts, [], T0)
+    apps = d1.hosts["h1"].apps
+    assert [a.name for a in apps] == ["network"] and apps[0].latest == "11.0.103"
+    assert d1.hosts["h1"].updates_available == 1
+    assert d1.summary["updates_available"] == 1, d1.summary  # ignored console excluded
+    pend = d1.summary["pending_updates"]
+    assert len(pend) == 1 and pend[0]["name"] == "Network (application)", pend
+    assert pend[0]["installed"] == "11.0.99" and pend[0]["latest"] == "11.0.103"
+
+    d2, st = run(hosts, [], T0 + 31 * day, st)
+    assert d2.summary["updates_overdue"] == 1 and d2.hosts["h1"].updates_overdue == 1
+    events = [e for e in diff_events(d1, d2) if e[0] == "updates_overdue"]
+    assert len(events) == 1 and events[0][1]["devices"][0]["name"] == "Network (application)"
+
+    # Updated: the pending entry clears.
+    hosts[0]["reportedState"]["controllers"][0]["updateAvailable"] = None
+    d3, st = run(hosts, [], T0 + 32 * day, st)
+    assert d3.summary["updates_available"] == 0 and not d3.hosts["h1"].apps
+
+
 def main() -> None:
     test_offline_and_ignore()
     test_odd_inputs()
     test_state_round_trip()
     test_events()
     test_stale_updates()
+    test_app_updates()
     print("all processing tests passed")
 
 
